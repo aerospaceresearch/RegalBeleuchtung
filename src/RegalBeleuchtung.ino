@@ -26,7 +26,7 @@ char mqtt_port[6] = "1883";
 //defines for APA102
 #define DATA_PIN 6  //example pin - has to be changed?
 #define CLOCK_PIN 5 //example pin - has to be changed?
-#define NUM_LEDS 60
+#define NUM_LEDS 30
 //state of LEDs
 CRGB leds[NUM_LEDS];
 
@@ -225,7 +225,12 @@ void setup()
   MDNS.addService("http", "tcp", 80);
 
   //setup LEDs
-  FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN>(leds, NUM_LEDS);
+  FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, BGR, DATA_RATE_MHZ(1)>(leds, NUM_LEDS);
+  int i;
+  for (i =0; i < NUM_LEDS; i++)
+  {
+    leds[i] = CRGB::Blue;
+  }
 }
 
 void mqtt_reconnect()
@@ -258,5 +263,16 @@ void loop() {
         mqttClient.loop();
         ArduinoOTA.handle();
 
+        int i;
+        for (i =0; i < NUM_LEDS; i++)
+        {
+          int r = leds[i].r;
+          leds[i].r = leds[i].g;
+          leds[i].g = leds[i].b;
+          leds[i].b = r;
+        }
+
         FastLED.show();
+
+        delay(300);
 }
