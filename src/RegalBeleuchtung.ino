@@ -6,6 +6,8 @@
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
 
+#include <FastLED.h>
+
 //ESP MQTT
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
@@ -20,6 +22,13 @@ bool shouldSaveConfig = false;
 char node_name[64] = "weltenraum_led";
 char mqtt_server[64] = "mqtt.shack";
 char mqtt_port[6] = "1883";
+
+//defines for APA102
+#define DATA_PIN 6  //example pin - has to be changed?
+#define CLOCK_PIN 5 //example pin - has to be changed?
+#define NUM_LEDS 60
+//state of LEDs
+CRGB leds[NUM_LEDS];
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length)
 {
@@ -214,6 +223,9 @@ void setup()
   webServer.begin();
 
   MDNS.addService("http", "tcp", 80);
+
+  //setup LEDs
+  FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN>(leds, NUM_LEDS);
 }
 
 void mqtt_reconnect()
@@ -245,4 +257,6 @@ void loop() {
         }
         mqttClient.loop();
         ArduinoOTA.handle();
+
+        FastLED.show();
 }
