@@ -19,16 +19,22 @@ ESP8266WebServer webServer(80);
 bool shouldSaveConfig = false;
 
 //define your default values here, if there are different values in config.json, they are overwritten.
-char node_name[64] = "weltenraum_led";
-char mqtt_server[64] = "mqtt.shack";
+char node_name[64] = "weltenraum_led.shack";
+char mqtt_server[64] = "krankermixer.shack";
 char mqtt_port[6] = "1883";
+
+long long r;
+long long g;
+long long b;
 
 //defines for APA102
 #define DATA_PIN 6  //example pin - has to be changed?
 #define CLOCK_PIN 5 //example pin - has to be changed?
-#define NUM_LEDS 30
+#define NUM_LEDS 90
 //state of LEDs
 CRGB leds[NUM_LEDS];
+
+#define MQTT_KEEPALIVE = 600
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length)
 {
@@ -43,9 +49,12 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length)
         Serial.println((const char*)payload);
 
         //parse JSON here..... to drive LEDs
+        setColor((char*)payload);
 
         mqttClient.publish(buffer, "ACK");
 }
+
+
 
 String formatBytes(size_t bytes){
   if (bytes < 1024){
@@ -70,6 +79,7 @@ void setup()
   // put your setup code here, to run once:
   Serial.begin(115200);
   Serial.println();
+
 
   //clean FS, for testing
   //SPIFFS.format();
@@ -145,20 +155,11 @@ void setup()
   //reset settings - for testing
   //wifiManager.resetSettings();
 
-  //set minimu quality of signal so it ignores AP's under that quality
-  //defaults to 8%
-  //wifiManager.setMinimumSignalQuality();
-
-  //sets timeout until configuration portal gets turned off
-  //useful to make it all retry or go to sleep
-  //in seconds
-  //wifiManager.setTimeout(120);
-
   //fetches ssid and pass and tries to connect
   //if it does not connect it starts an access point with the specified name
   //here  "AutoConnectAP"
   //and goes into a blocking loop awaiting configuration
-  if (!wifiManager.autoConnect("DaliMasterSettings", "password")) {
+  if (!wifiManager.autoConnect("shack", "welcome2shack")) {
           Serial.println("failed to connect and hit timeout");
           delay(3000);
           //reset and try again, or maybe put it to deep sleep
@@ -214,7 +215,7 @@ void setup()
   mqttClient.setCallback(mqtt_callback);
 
   char buffer[64];
-  sprintf(buffer, "%s.local", node_name);
+  sprintf(buffer, "%s", node_name);
   Serial.print("DNS name: ");
   Serial.println(buffer);
   MDNS.begin(node_name);
@@ -247,7 +248,10 @@ void mqtt_reconnect()
         }
         else
         {
-                Serial.println("MQTT not connected");
+          Serial.println("MQTT not connected");
+          Serial.println(mqtt_server);
+          Serial.println(mqtt_port);
+
         }
 
 
@@ -255,6 +259,15 @@ void mqtt_reconnect()
         Serial.println(buffer);
 }
 
+void setColor (char* color) {
+  long long colnumber = strtol( &color[1], NULL, 16);
+
+  // Split them up into r, g, b values
+  r = colnumber >> 16;
+  g = colnumber >> 8 & 0xFF;
+  b = colnumber & 0xFF;
+
+}
 
 void loop() {
         if (!mqttClient.connected()) {
@@ -266,10 +279,9 @@ void loop() {
         int i;
         for (i =0; i < NUM_LEDS; i++)
         {
-          int r = leds[i].r;
-          leds[i].r = leds[i].g;
-          leds[i].g = leds[i].b;
-          leds[i].b = r;
+          leds[i].r = g;
+          leds[i].g = b;
+          leds[i].b = b;
         }
 
         FastLED.show();
