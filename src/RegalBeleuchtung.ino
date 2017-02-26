@@ -6,6 +6,7 @@
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
 
+#define FASTLED_ALLOW_INTERRUPTS 0
 #include <FastLED.h>
 
 //ESP MQTT
@@ -19,19 +20,32 @@ ESP8266WebServer webServer(80);
 bool shouldSaveConfig = false;
 
 //define your default values here, if there are different values in config.json, they are overwritten.
-char node_name[64] = "weltenraum_led";
-char mqtt_server[64] = "mqtt.shack";
+char node_name[64] = "weltenraum_regalled";
+char mqtt_server[64] = "broker.hivemq.com";
 char mqtt_port[6] = "1883";
 
+long long r;
+long long g;
+long long b;
+
+String mode = "rainbow";
+
 //defines for APA102
-#define DATA_PIN 6  //example pin - has to be changed?
-#define CLOCK_PIN 5 //example pin - has to be changed?
-#define NUM_LEDS 30
+#define DATA_PIN 6
+#define CLOCK_PIN 5
+
+//defines for WS2812
+//#define DATA_PIN 2
+
+#define NUM_LEDS 60
 //state of LEDs
 CRGB leds[NUM_LEDS];
 
+#define MQTT_KEEPALIVE = 600
+
 void mqtt_callback(char* topic, byte* payload, unsigned int length)
 {
+        int i;
         char buffer[64];
         char ans_string[128] =  {0};
         memcpy(ans_string, payload, length);
@@ -41,11 +55,24 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length)
         payload[length] = 0;
 
         Serial.println((const char*)payload);
+        String pay = (char*)payload;
 
         //parse JSON here..... to drive LEDs
 
+        StaticJsonBuffer<200> jsonBuffer;
+
+        JsonObject& root = jsonBuffer.parseObject(pay);
+
+        mode = root["mode"].asString();
+        int id1    = root["leds"][1];
+        //int id2   = root["leds"][1];
+
+        Serial.println("JSON: mode=" + mode + " - id1=" + id1);
+
         mqttClient.publish(buffer, "ACK");
 }
+
+
 
 String formatBytes(size_t bytes){
   if (bytes < 1024){
@@ -70,6 +97,7 @@ void setup()
   // put your setup code here, to run once:
   Serial.begin(115200);
   Serial.println();
+
 
   //clean FS, for testing
   //SPIFFS.format();
@@ -145,20 +173,11 @@ void setup()
   //reset settings - for testing
   //wifiManager.resetSettings();
 
-  //set minimu quality of signal so it ignores AP's under that quality
-  //defaults to 8%
-  //wifiManager.setMinimumSignalQuality();
-
-  //sets timeout until configuration portal gets turned off
-  //useful to make it all retry or go to sleep
-  //in seconds
-  //wifiManager.setTimeout(120);
-
   //fetches ssid and pass and tries to connect
   //if it does not connect it starts an access point with the specified name
   //here  "AutoConnectAP"
   //and goes into a blocking loop awaiting configuration
-  if (!wifiManager.autoConnect("DaliMasterSettings", "password")) {
+  if (!wifiManager.autoConnect("LED-ESP-02", "4223422342234223")) {
           Serial.println("failed to connect and hit timeout");
           delay(3000);
           //reset and try again, or maybe put it to deep sleep
@@ -214,7 +233,7 @@ void setup()
   mqttClient.setCallback(mqtt_callback);
 
   char buffer[64];
-  sprintf(buffer, "%s.local", node_name);
+  sprintf(buffer, "%s", node_name);
   Serial.print("DNS name: ");
   Serial.println(buffer);
   MDNS.begin(node_name);
@@ -225,7 +244,11 @@ void setup()
   MDNS.addService("http", "tcp", 80);
 
   //setup LEDs
+  // APA102
   FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, BGR, DATA_RATE_MHZ(1)>(leds, NUM_LEDS);
+  //WS2812
+  //FastLED.addLeds<WS2812B, DATA_PIN>(leds, NUM_LEDS);
+//  FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
   int i;
   for (i =0; i < NUM_LEDS; i++)
   {
@@ -243,16 +266,105 @@ void mqtt_reconnect()
                 Serial.println("MQTT connected");
 
                 sprintf(buffer, "%s/command", node_name);
-                mqttClient.subscribe(buffer);
+                mqttClient.subscribe(node_name);
         }
         else
         {
-                Serial.println("MQTT not connected");
+          Serial.println("MQTT not connected");
+          Serial.println(mqtt_server);
+          Serial.println(mqtt_port);
+
         }
 
 
         sprintf(buffer, "MQTT state is: %d", mqttClient.state());
         Serial.println(buffer);
+}
+
+void showStrip() {
+   FastLED.show();
+}
+
+void setPixel(int Pixel, byte red, byte green, byte blue) {
+   leds[Pixel].r = red;
+   leds[Pixel].g = green;
+   leds[Pixel].b = blue;
+ }
+
+ void setAll(byte red, byte green, byte blue) {
+  for(int i = 0; i < NUM_LEDS; i++ ) {
+    setPixel(i, red, green, blue);
+  }
+  showStrip();
+}
+
+void Strobe(byte red, byte green, byte blue, int StrobeCount, int FlashDelay, int EndPause){
+  for(int j = 0; j < StrobeCount; j++) {
+    setAll(red,green,blue);
+    showStrip();
+    delay(FlashDelay);
+    setAll(0,0,0);
+    showStrip();
+    delay(FlashDelay);
+  }
+
+ delay(EndPause);
+}
+
+void setColor (char* color) {
+  long long colnumber = strtol( &color[1], NULL, 16);
+
+  r = colnumber >> 16;
+  g = colnumber >> 8 & 0xFF;
+  b = colnumber & 0xFF;
+
+  int i;
+
+  for (i =0; i < NUM_LEDS; i++)
+  {
+    leds[i].r = r;
+    leds[i].g = g;
+    leds[i].b = b;
+    //leds[i] = CRGB::Green;
+  }
+  FastLED.show();
+}
+
+
+byte * Wheel(byte WheelPos) {
+  static byte c[3];
+
+  if(WheelPos < 85) {
+   c[0]=WheelPos * 3;
+   c[1]=255 - WheelPos * 3;
+   c[2]=0;
+  } else if(WheelPos < 170) {
+   WheelPos -= 85;
+   c[0]=255 - WheelPos * 3;
+   c[1]=0;
+   c[2]=WheelPos * 3;
+  } else {
+   WheelPos -= 170;
+   c[0]=0;
+   c[1]=WheelPos * 3;
+   c[2]=255 - WheelPos * 3;
+  }
+
+  return c;
+}
+
+void rainbowCycle(int SpeedDelay) {
+  byte *c;
+  uint16_t i, j;
+
+  for(j=0; j<256*5; j++) { // 5 cycles of all colors on wheel
+    for(i=0; i< NUM_LEDS; i++) {
+      c=Wheel(((i * 256 / NUM_LEDS) + j) & 255);
+      setPixel(i, *c, *(c+1), *(c+2));
+    }
+    showStrip();
+    delay(SpeedDelay);
+  }
 }
 
 
@@ -263,16 +375,13 @@ void loop() {
         mqttClient.loop();
         ArduinoOTA.handle();
 
-        int i;
-        for (i =0; i < NUM_LEDS; i++)
-        {
-          int r = leds[i].r;
-          leds[i].r = leds[i].g;
-          leds[i].g = leds[i].b;
-          leds[i].b = r;
+        Serial.println("mode: " + mode);
+        if (mode == "rainbow") {
+          rainbowCycle(50);
+        } else if (mode == "strobe") {
+          Strobe(0xff, 0xff, 0xff, 1, 50, 1000);
+        } else if (mode == "static") {
+          setAll(0x0a, 0xff, 0xe7);
         }
-
-        FastLED.show();
-
-        delay(300);
+      delay(30);
 }
