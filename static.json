@@ -1,0 +1,21 @@
+
+{
+  "mode": "static",
+  "mode-settings": "",
+  "leds": [
+    {
+      "id": 0,
+      "r": 42,
+      "g": 23,
+      "b": 132,
+      "brightness": 255
+    },
+    {
+      "id": 1,
+      "r": 132,
+      "g": 42,
+      "b": 23,
+      "brightness": 255
+    }
+  ]
+}
